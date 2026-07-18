@@ -75,7 +75,7 @@ def get_first_buyers(contract_address):
                     "amount": value,
                     "timestamp": tx.get("timeStamp")
                 }
-                if len(buyers) >= 5:
+                if len(buyers) >= 1:
                     break
         
         result = [{"address": addr, **data} for addr, data in buyers.items()]
