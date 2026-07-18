@@ -86,7 +86,8 @@ def is_valid_dex_token(token_info):
     chain = token_info.get("chain", "").lower()
     
     if chain not in CONFIG["SUPPORTED_CHAINS"]:
-        print(f"   ⏭️ [DEX] شبکه {chain} پشتیبانی نمی‌شود.")
+        # این خط را غیرفعال کنید تا پیام نمایش داده نشود
+        # print(f"   ⏭️ [DEX] شبکه {chain} پشتیبانی نمی‌شود.")
         return False
     
     liquidity = token_info.get("liquidity", 0)
