@@ -8,7 +8,7 @@ import time
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY")
-COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", "")  # اختیاری (برای افزایش محدودیت)
+COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", "")  # اختیاری
 
 if not TELEGRAM_TOKEN or not CHAT_ID or not ETHERSCAN_API_KEY:
     raise ValueError("❌ خطا: توکن، آیدی کانال یا کلید اتریوم در Secrets تنظیم نشده است.")
@@ -18,15 +18,19 @@ TRENDING_METAS_URL = "https://api.dexscreener.com/metas/trending/v1"
 META_DETAILS_URL = "https://api.dexscreener.com/metas/meta/v1"
 COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/markets"
 
-# ==================== تنظیمات فیلترها ====================
+# ==================== تنظیمات فیلترها (قابل تنظیم) ====================
 CONFIG = {
-    "MIN_LIQUIDITY_DEX": 30000,     # حداقل نقدینگی برای DEX (۳۰,۰۰۰ دلار)
-    "MIN_VOLUME_DEX": 5000,         # حداقل حجم برای DEX (۵,۰۰۰ دلار)
-    "MIN_CHANGE_24H": 10,           # حداقل رشد ۱۰٪
-    "MIN_VOLUME_CEX": 100000,       # حداقل حجم برای CEX (۱۰۰,۰۰۰ دلار)
-    "MAX_CHANGE_24H": 10000,        # حداکثر رشد معقول (برای جلوگیری از خطا)
-    "REPORT_COUNT": 5,              # تعداد ارزهای قابل گزارش
-    "SUPPORTED_CHAINS": ["ethereum", "eth", "bsc", "bnb", "arbitrum", "polygon", "base", "linea", "avalanche", "fantom"]
+    "MIN_LIQUIDITY_DEX": 30000,        # حداقل نقدینگی DEX (۳۰,۰۰۰ دلار)
+    "MIN_VOLUME_DEX": 5000,            # حداقل حجم DEX (۵,۰۰۰ دلار)
+    "MIN_VOLUME_CEX": 500000,          # حداقل حجم CEX (۵۰۰,۰۰۰ دلار)
+    "MIN_CHANGE_24H": 10,              # حداقل رشد ۱۰٪
+    "MAX_CHANGE_24H": 500,             # حداکثر رشد معقول (برای جلوگیری از خطا)
+    "REPORT_COUNT": 5,                 # تعداد ارزهای قابل گزارش
+    "SUPPORTED_CHAINS": [
+        "ethereum", "eth", "bsc", "bnb", "arbitrum", 
+        "optimism", "polygon", "base", "linea", 
+        "avalanche", "fantom"
+    ]
 }
 
 # ==================== توابع ارسال پیام ====================
@@ -214,7 +218,6 @@ def get_gainers_from_coingecko():
     print("="*60)
     
     try:
-        # تنظیم هدر برای API Key (اختیاری)
         headers = {}
         if COINGECKO_API_KEY:
             headers["x-cg-pro-api-key"] = COINGECKO_API_KEY
@@ -242,41 +245,54 @@ def get_gainers_from_coingecko():
         
         for coin in data:
             try:
-                change_24h = coin.get("price_change_percentage_24h", 0)
+                # ۱. مدیریت فیلدهای None
+                change_24h = coin.get("price_change_percentage_24h")
+                if change_24h is None:
+                    filtered_count += 1
+                    continue
                 
-                # فیلتر رشد
+                # ۲. دریافت سایر فیلدها با مقدار پیش‌فرض
+                volume = coin.get("total_volume") or 0
+                market_cap = coin.get("market_cap") or 0
+                name = coin.get("name", "نامشخص")
+                symbol = coin.get("symbol", "").upper()
+                price = coin.get("current_price") or 0
+                coin_id = coin.get("id", "")
+                
+                # ۳. فیلتر رشد پایین
                 if change_24h < CONFIG["MIN_CHANGE_24H"]:
                     filtered_count += 1
                     continue
                 
-                # فیلتر حجم معاملات
-                volume = coin.get("total_volume", 0)
+                # ۴. فیلتر حجم پایین
                 if volume < CONFIG["MIN_VOLUME_CEX"]:
                     filtered_count += 1
                     continue
                 
-                # جلوگیری از رشدهای غیرعادی
+                # ۵. فیلتر رشد غیرعادی (بیش از ۵۰۰٪)
                 if change_24h > CONFIG["MAX_CHANGE_24H"]:
+                    print(f"   ⏭️ [CEX] رشد غیرعادی: {symbol} ({change_24h:.2f}%)")
                     filtered_count += 1
                     continue
                 
+                # ۶. ساخت اطلاعات توکن
                 token_info = {
-                    "name": coin.get("name", "نامشخص"),
-                    "symbol": coin.get("symbol", "").upper(),
+                    "name": name,
+                    "symbol": symbol,
                     "chain": "متمرکز (CEX)",
-                    "price": coin.get("current_price", 0),
+                    "price": price,
                     "change_24h": change_24h,
                     "volume": volume,
-                    "liquidity": coin.get("market_cap", 0),
-                    "market_cap": coin.get("market_cap", 0),
-                    "dex_url": f"https://www.coingecko.com/en/coins/{coin.get('id', '')}",
+                    "liquidity": market_cap,
+                    "market_cap": market_cap,
+                    "dex_url": f"https://www.coingecko.com/en/coins/{coin_id}",
                     "contract": "",
                     "dex": "CoinGecko",
                     "meta_name": "صرافی‌های متمرکز",
                     "source": "CEX"
                 }
                 gainers.append(token_info)
-                print(f"   ✅ [CEX] توکن باکیفیت: {token_info['symbol']} (رشد: {change_24h:.2f}%)")
+                print(f"   ✅ [CEX] توکن باکیفیت: {symbol} (رشد: {change_24h:.2f}%)")
                 
             except Exception as e:
                 print(f"   ⚠️ [CEX] خطا در پردازش: {e}")
