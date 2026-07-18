@@ -1,0 +1,29 @@
+name: Crypto Wallet Bot
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: دریافت کد
+      uses: actions/checkout@v4
+    
+    - name: نصب پایتون
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    
+    - name: نصب کتابخانه‌ها
+      run: pip install -r requirements.txt
+    
+    - name: اجرای ربات
+      env:
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        CHAT_ID: ${{ secrets.CHAT_ID }}
+        ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+      run: python bot.py
