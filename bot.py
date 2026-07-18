@@ -4,24 +4,17 @@ import json
 from datetime import datetime
 import time
 
-# ==================== گرفتن اطلاعات از حافظه مخفی گیت‌هاب ====================
+# ==================== گرفتن اطلاعات ====================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY")
-COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", "")
-SOLSCAN_API_KEY = os.getenv("SOLSCAN_API_KEY", "")
 
 if not TELEGRAM_TOKEN or not CHAT_ID or not ETHERSCAN_API_KEY:
     raise ValueError("❌ خطا: توکن، آیدی کانال یا کلید اتریوم در Secrets تنظیم نشده است.")
 
-# بررسی کلید سولانا (فقط هشدار)
-if not SOLSCAN_API_KEY:
-    print("⚠️ هشدار: SOLSCAN_API_KEY تنظیم نشده است. توکن‌های سولانا بررسی نمی‌شوند.")
-
 # ==================== آدرس‌های API ====================
 TRENDING_METAS_URL = "https://api.dexscreener.com/metas/trending/v1"
 META_DETAILS_URL = "https://api.dexscreener.com/metas/meta/v1"
-COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/markets"
 
 # ==================== تنظیمات فیلترها ====================
 CONFIG = {
@@ -29,12 +22,11 @@ CONFIG = {
     "MIN_VOLUME_DEX": 5000,
     "MIN_CHANGE_24H": 10,
     "MAX_CHANGE_24H": 500,
-    "REPORT_COUNT": 10,  # افزایش برای پیدا کردن ارزهای با خریدار
+    "REPORT_COUNT": 5,
     "SUPPORTED_CHAINS": [
         "ethereum", "eth", "bsc", "bnb", "arbitrum", 
         "optimism", "polygon", "base", "linea", 
-        "avalanche", "fantom",
-        "solana", "sol"
+        "avalanche", "fantom"
     ]
 }
 
@@ -97,20 +89,12 @@ def is_valid_dex_token(token_info):
         return False
     
     liquidity = token_info.get("liquidity", 0)
-    min_liquidity = CONFIG["MIN_LIQUIDITY_DEX"]
-    if chain in ["solana", "sol"]:
-        min_liquidity = 10000
-    
-    if liquidity < min_liquidity:
+    if liquidity < CONFIG["MIN_LIQUIDITY_DEX"]:
         print(f"   ⏭️ [DEX] نقدینگی پایین: ${liquidity:,.0f}")
         return False
     
     volume = token_info.get("volume", 0)
-    min_volume = CONFIG["MIN_VOLUME_DEX"]
-    if chain in ["solana", "sol"]:
-        min_volume = 2000
-    
-    if volume < min_volume:
+    if volume < CONFIG["MIN_VOLUME_DEX"]:
         print(f"   ⏭️ [DEX] حجم پایین: ${volume:,.0f}")
         return False
     
@@ -269,48 +253,6 @@ def get_first_buyers_evm(contract_address, chain_name="ethereum"):
         print(f"❌ [EVM] خطا در Etherscan: {e}")
         return []
 
-def get_first_buyers_solana(contract_address):
-    """پیدا کردن خریداران اولیه در شبکه سولانا با Solscan API"""
-    if not SOLSCAN_API_KEY:
-        print("⚠️ [SOL] کلید Solscan تنظیم نشده است.")
-        return []
-    
-    print(f"🔗 [SOL] در حال بررسی قرارداد سولانا: {contract_address[:10]}...{contract_address[-6:]}")
-    
-    # استفاده از API رسمی Solscan
-    url = f"https://public-api.solscan.io/account/transactions?account={contract_address}&limit=100"
-    
-    headers = {}
-    if SOLSCAN_API_KEY:
-        headers["token"] = SOLSCAN_API_KEY
-        print("🔑 [SOL] استفاده از کلید API اختصاصی")
-    
-    try:
-        response = requests.get(url, headers=headers, timeout=15)
-        
-        if response.status_code == 404:
-            print("ℹ️ [SOL] قرارداد در Solscan پیدا نشد.")
-            return []
-        
-        data = response.json()
-        if not data:
-            print("ℹ️ [SOL] اطلاعاتی برای این قرارداد وجود ندارد.")
-            return []
-        
-        # پردازش تراکنش‌ها برای پیدا کردن خریداران اولیه
-        if isinstance(data, list):
-            print(f"📊 [SOL] تعداد تراکنش‌های پیدا شده: {len(data)}")
-            
-            # اینجا باید خریداران اولیه را استخراج کنیم
-            # اما API عمومی Solscan محدود است و نیاز به بررسی دقیق‌تر دارد
-            print("ℹ️ [SOL] اطلاعات خریداران اولیه نیاز به بررسی دقیق‌تر دارد.")
-        
-        return []
-        
-    except Exception as e:
-        print(f"❌ [SOL] خطا در Solscan: {e}")
-        return []
-
 def get_first_buyers(contract_address, chain_name):
     """تشخیص شبکه و دریافت خریداران اولیه"""
     if not contract_address or len(contract_address) < 10:
@@ -321,59 +263,24 @@ def get_first_buyers(contract_address, chain_name):
     
     if chain in ["ethereum", "eth", "bsc", "bnb", "arbitrum", "optimism", "polygon", "base", "linea", "avalanche", "fantom"]:
         return get_first_buyers_evm(contract_address, chain)
-    
-    elif chain in ["solana", "sol"]:
-        return get_first_buyers_solana(contract_address)
-    
     else:
-        print(f"ℹ️ شبکه {chain} برای جستجوی خریداران پشتیبانی نمی‌شود.")
+        print(f"ℹ️ شبکه {chain} پشتیبانی نمی‌شود.")
         return []
 
 # ==================== ساخت پیام گزارش ====================
 
 def format_message(token, buyers=None):
     """ساخت پیام گزارش برای یک توکن"""
-    source_emoji = "🦄" 
-    source_name = "صرافی غیرمتمرکز"
-    
-    chain_display = token.get('chain', 'نامشخص')
-    if chain_display.lower() in ["solana", "sol"]:
-        chain_display = "سولانا 🌟"
-    
-    try:
-        price = float(token.get('price', 0))
-        price_str = f"${price:,.4f}"
-    except (ValueError, TypeError):
-        price_str = token.get('price', '۰')
-    
-    try:
-        change = float(token.get('change_24h', 0))
-        change_str = f"{change:.2f}%"
-    except (ValueError, TypeError):
-        change_str = f"{token.get('change_24h', 0)}%"
-    
-    try:
-        volume = float(token.get('volume', 0))
-        volume_str = f"${volume:,.0f}"
-    except (ValueError, TypeError):
-        volume_str = f"${token.get('volume', 0)}"
-    
-    try:
-        liquidity = float(token.get('liquidity', 0))
-        liquidity_str = f"${liquidity:,.0f}"
-    except (ValueError, TypeError):
-        liquidity_str = f"${token.get('liquidity', 0)}"
-    
     message = f"""
-{source_emoji} **ارز با خریدار اولیه شناسایی شد!** ({source_name})
+🦄 **ارز با خریدار اولیه شناسایی شد!**
 ▫️ نام: {token.get('name', 'نامشخص')} (${token.get('symbol', 'نامشخص')})
-▫️ شبکه: {chain_display}
+▫️ شبکه: {token.get('chain', 'نامشخص')}
 ▫️ دسته‌بندی: {token.get('meta_name', 'نامشخص')}
 ▫️ صرافی: {token.get('dex', 'نامشخص')}
-▫️ قیمت: {price_str}
-▫️ رشد ۲۴ ساعته: **{change_str}** ✅
-▫️ حجم معاملات: {volume_str}
-▫️ نقدینگی: {liquidity_str}
+▫️ قیمت: ${float(token.get('price', 0)):,.4f}
+▫️ رشد ۲۴ ساعته: **{token.get('change_24h', 0):.2f}%** ✅
+▫️ حجم معاملات: ${token.get('volume', 0):,.0f}
+▫️ نقدینگی: ${token.get('liquidity', 0):,.0f}
 🔗 [مشاهده در DexScreener]({token.get('dex_url', '#')})
     """
     
@@ -399,32 +306,24 @@ def main():
     
     start_time = time.time()
     
-    # ۱. دریافت از DexScreener (صرافی‌های غیرمتمرکز)
-    gainers_dex = get_gainers_from_dex()
+    # ۱. دریافت از DexScreener
+    dex_gainers = get_gainers_from_dex()
     
-    # ۲. فقط ارزهای DEX را نگه دار (CEX حذف می‌شود)
-    print("\n" + "="*60)
-    print("🔄 فیلتر کردن ارزهای DEX (حذف CEX)")
-    print("="*60)
-    
-    dex_only = [token for token in gainers_dex if token.get("source") == "DEX"]
-    print(f"📊 تعداد ارزهای DEX: {len(dex_only)}")
-    
-    if not dex_only:
+    if not dex_gainers:
         print("ℹ️ هیچ ارز DEX باکیفیتی پیدا نشد.")
         return
     
-    # ۳. مرتب‌سازی بر اساس رشد
-    dex_only.sort(key=lambda x: float(x.get('change_24h', 0)) if x.get('change_24h') is not None else 0, reverse=True)
+    # ۲. مرتب‌سازی بر اساس رشد
+    dex_gainers.sort(key=lambda x: float(x.get('change_24h', 0)) if x.get('change_24h') is not None else 0, reverse=True)
     
-    # ۴. پیدا کردن خریداران اولیه برای هر ارز DEX
+    # ۳. پیدا کردن خریداران اولیه
     print("\n" + "="*60)
     print("🔍 بررسی خریداران اولیه برای هر ارز")
     print("="*60)
     
-    valid_tokens = []  # لیست ارزهای با خریدار
+    valid_tokens = []
     
-    for token in dex_only:
+    for token in dex_gainers:
         contract = token.get("contract", "")
         chain = token.get("chain", "")
         
@@ -440,26 +339,25 @@ def main():
         else:
             print(f"⏭️ {token['symbol']} بدون قرارداد معتبر - حذف شد.")
     
-    # ۵. گزارش نهایی
+    # ۴. گزارش نهایی
     print("\n" + "="*60)
     print("📊 گزارش نهایی")
     print("="*60)
     
-    print(f"📊 تعداد کل ارزهای DEX باکیفیت: {len(dex_only)}")
+    print(f"📊 تعداد کل ارزهای DEX باکیفیت: {len(dex_gainers)}")
     print(f"✅ تعداد ارزهای با خریدار اولیه: {len(valid_tokens)}")
-    print(f"⏭️ تعداد ارزهای بدون خریدار: {len(dex_only) - len(valid_tokens)}")
+    print(f"⏭️ تعداد ارزهای بدون خریدار: {len(dex_gainers) - len(valid_tokens)}")
     
     if not valid_tokens:
         print("ℹ️ هیچ ارزی با خریدار اولیه پیدا نشد.")
         return
     
-    # ۶. نمایش ۵ ارز برتر با خریدار
-    print("\n🏆 ۵ ارز برتر با خریدار اولیه:")
+    print("\n🏆 ارزهای برتر با خریدار اولیه:")
     for i, (token, buyers) in enumerate(valid_tokens[:5], 1):
         change = float(token.get('change_24h', 0)) if token.get('change_24h') is not None else 0
         print(f"   {i}. {token['symbol']} ({token['chain']}) - رشد: {change:.2f}% - تعداد خریدار: {len(buyers)}")
     
-    # ۷. ارسال گزارش به تلگرام (فقط ارزهای با خریدار)
+    # ۵. ارسال گزارش
     report_count = min(CONFIG["REPORT_COUNT"], len(valid_tokens))
     print(f"\n📨 در حال ارسال گزارش برای {report_count} ارز با خریدار اولیه...")
     
@@ -476,12 +374,12 @@ def main():
         if i < report_count:
             time.sleep(2)
     
-    # ۸. گزارش نهایی
+    # ۶. گزارش نهایی
     elapsed_time = time.time() - start_time
     print("\n" + "="*60)
     print(f"✅ فرآیند اسکن و گزارش‌دهی در {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} به پایان رسید.")
     print(f"⏱️ زمان اجرا: {elapsed_time:.2f} ثانیه")
-    print(f"📊 تعداد کل ارزهای DEX باکیفیت: {len(dex_only)}")
+    print(f"📊 تعداد کل ارزهای DEX باکیفیت: {len(dex_gainers)}")
     print(f"✅ تعداد ارزهای با خریدار اولیه: {len(valid_tokens)}")
     print(f"📨 تعداد گزارش‌های ارسال شده: {success_count}")
     print("="*60)
