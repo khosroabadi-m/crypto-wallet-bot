@@ -36,7 +36,8 @@ def get_gainer_tokens():
             price_change = token.get("priceChange", {})
             change_24h = price_change.get("h24", 0)
             
-            if change_24h >= 20:
+            # ✅ تغییر ۱: عدد رشد از ۲۰ به ۱۰ کاهش یافت
+            if change_24h >= 10:  # الان ارزهای با رشد بالای ۱۰٪ رو پیدا می‌کنه
                 gainers.append({
                     "name": token.get("baseToken", {}).get("name", "نامشخص"),
                     "symbol": token.get("baseToken", {}).get("symbol", "نمادنامشخص"),
@@ -75,7 +76,8 @@ def get_first_buyers(contract_address):
                     "amount": value,
                     "timestamp": tx.get("timeStamp")
                 }
-                if len(buyers) >= 1:
+                # ✅ تغییر ۲: تعداد خریداران از ۱ به ۵ افزایش یافت
+                if len(buyers) >= 5:  # الان ۵ خریدار اول رو پیدا می‌کنه
                     break
         
         result = [{"address": addr, **data} for addr, data in buyers.items()]
@@ -89,15 +91,15 @@ def main():
     print(f"⏳ اسکن جدید در {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} شروع شد...")
     
     gainers = get_gainer_tokens()
-    print(f"🔍 تعداد ارزهای بالای ۲۰٪: {len(gainers)}")
+    print(f"🔍 تعداد ارزهای بالای ۱۰٪: {len(gainers)}")
     
     if not gainers:
-        print("ℹ️ هیچ ارزی پیدا نشد.")
+        print("ℹ️ هیچ ارزی با رشد بالای ۱۰٪ پیدا نشد.")
         return
     
-    token = gainers[0]
-    
-    message = f"""
+    # ✅ تغییر ۳: گزارش ۳ ارز برتر (می‌تونی عدد رو عوض کنی)
+    for token in gainers[:3]:  # ۳ ارز برتر رو گزارش بده
+        message = f"""
 🚀 **ارز داغ جدید شناسایی شد!**
 ▫️ نام: {token['name']} (${token['symbol']})
 ▫️ شبکه: {token['chain']}
@@ -106,24 +108,26 @@ def main():
 ▫️ حجم معاملات: ${token['volume']:,.0f}
 ▫️ نقدینگی: ${token['liquidity']:,.0f}
 🔗 [مشاهده در DexScreener]({token['dex_url']})
-    """
-    
-    contract = token.get("contract")
-    if contract and len(contract) > 10:
-        buyers = get_first_buyers(contract)
-        if buyers:
-            message += "\n🐋 **کیف‌پول‌های خریدار اولیه:**\n"
-            for i, buyer in enumerate(buyers[:5], 1):
-                addr = buyer["address"]
-                short_addr = addr[:6] + "..." + addr[-4:]
-                message += f"{i}. `{short_addr}` (مقدار: {buyer['amount']:.2f} توکن)\n"
+        """
+        
+        contract = token.get("contract")
+        if contract and len(contract) > 10:
+            buyers = get_first_buyers(contract)
+            if buyers:
+                message += "\n🐋 **کیف‌پول‌های خریدار اولیه (۵ نفر اول):**\n"
+                for i, buyer in enumerate(buyers[:5], 1):
+                    addr = buyer["address"]
+                    short_addr = addr[:6] + "..." + addr[-4:]
+                    message += f"{i}. `{short_addr}` (مقدار: {buyer['amount']:.2f} توکن)\n"
+            else:
+                message += "\n⚠️ خریدار اولیه‌ای پیدا نشد."
         else:
-            message += "\n⚠️ خریدار اولیه‌ای پیدا نشد."
-    else:
-        message += "\n⚠️ آدرس قرارداد در دسترس نیست."
+            message += "\n⚠️ آدرس قرارداد در دسترس نیست."
+        
+        send_telegram_message(message)
+        print(f"✅ گزارش {token['symbol']} به کانال ارسال شد.")
     
-    send_telegram_message(message)
-    print("✅ گزارش نهایی به کانال ارسال شد.")
+    print("✅ همه گزارش‌ها ارسال شدند.")
 
 if __name__ == "__main__":
     main()
