@@ -2,8 +2,9 @@ name: Crypto Wallet Bot
 
 on:
   schedule:
-    - cron: '*/10 * * * *'  # هر ۱۰ دقیقه یکبار
-  workflow_dispatch:  # اجرای دستی
+    # هر ۳۰ دقیقه یکبار، فقط از ساعت ۶ صبح تا ۱۲ شب به وقت تهران
+    - cron: "0,30 2-20 * * *"
+  workflow_dispatch:  # امکان اجرای دستی
 
 jobs:
   run-bot:
