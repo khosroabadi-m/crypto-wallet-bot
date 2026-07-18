@@ -24,9 +24,10 @@ CONFIG = {
     "MAX_CHANGE_24H": 500,
     "REPORT_COUNT": 5,
     "SUPPORTED_CHAINS": [
-        "ethereum", "eth", "bsc", "bnb", "arbitrum", 
-        "optimism", "polygon", "base", "linea", 
-        "avalanche", "fantom"
+    "ethereum", "eth", "bsc", "bnb", "arbitrum", 
+    "optimism", "polygon", "base", "linea", 
+    "avalanche", "fantom"
+
     ]
 }
 
