@@ -8,7 +8,6 @@ import time
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY")
-# برای سولانا نیاز به کلید خاصی نیست، اما می‌توانید از Solscan API با کلید رایگان استفاده کنید
 SOLSCAN_API_KEY = os.getenv("SOLSCAN_API_KEY", "")  # اختیاری
 
 if not TELEGRAM_TOKEN or not CHAT_ID or not ETHERSCAN_API_KEY:
@@ -17,6 +16,8 @@ if not TELEGRAM_TOKEN or not CHAT_ID or not ETHERSCAN_API_KEY:
 # آدرس‌های API
 TRENDING_METAS_URL = "https://api.dexscreener.com/metas/trending/v1"
 META_DETAILS_URL = "https://api.dexscreener.com/metas/meta/v1"
+
+# ==================== توابع کمکی ====================
 
 def send_telegram_message(message):
     """ارسال پیام به کانال تلگرام"""
@@ -35,6 +36,8 @@ def send_telegram_message(message):
     except Exception as e:
         print(f"❌ خطا در ارسال پیام: {e}")
         return False
+
+# ==================== توابع دریافت داده از DexScreener ====================
 
 def get_trending_metas():
     """دریافت لیست دسته‌بندی‌های داغ از API ترندینگ"""
@@ -63,9 +66,34 @@ def get_tokens_from_meta(slug):
         print(f"   ⚠️ خطا در دریافت توکن‌های دسته {slug}: {e}")
         return []
 
-def get_first_buyers_ethereum(contract_address):
-    """پیدا کردن خریداران اولیه در شبکه اتریوم با Etherscan API"""
-    url = f"https://api.etherscan.io/api?module=account&action=tokentx&contractaddress={contract_address}&sort=asc&apikey={ETHERSCAN_API_KEY}"
+# ==================== توابع پیدا کردن خریداران اولیه ====================
+
+def get_first_buyers_evm(contract_address, chain_name="ethereum"):
+    """
+    پیدا کردن خریداران اولیه با Etherscan API V2
+    پشتیبانی از: اتریوم، BSC، Arbitrum، Optimism، Polygon، Base و ...
+    """
+    # نگاشت شبکه‌ها به chainId
+    chain_map = {
+        "ethereum": 1,
+        "eth": 1,
+        "bsc": 56,
+        "bnb": 56,
+        "arbitrum": 42161,
+        "optimism": 10,
+        "polygon": 137,
+        "base": 8453,
+        "linea": 59144,
+        "zksync": 324,
+        "celo": 42220,
+        "avalanche": 43114,
+        "fantom": 250,
+    }
+    
+    chain_id_num = chain_map.get(chain_name.lower(), 1)
+    
+    # ساخت آدرس با Etherscan API V2
+    url = f"https://api.etherscan.io/v2/api?chainid={chain_id_num}&module=account&action=tokentx&contractaddress={contract_address}&sort=asc&apikey={ETHERSCAN_API_KEY}"
     
     try:
         response = requests.get(url, timeout=15)
@@ -82,7 +110,9 @@ def get_first_buyers_ethereum(contract_address):
         for tx in transactions:
             try:
                 from_addr = tx.get("from")
-                value = float(tx.get("value", 0)) / (10 ** 18)
+                # تشخیص تعداد رقم اعشار
+                decimals = int(tx.get("tokenDecimal", 18))
+                value = float(tx.get("value", 0)) / (10 ** decimals)
                 if value > 0 and from_addr not in buyers:
                     buyers[from_addr] = {
                         "amount": value,
@@ -104,14 +134,16 @@ def get_first_buyers_ethereum(contract_address):
         return []
 
 def get_first_buyers_solana(contract_address):
-    """پیدا کردن خریداران اولیه در شبکه سولانا با Solscan API"""
-    # سعی کنید از API عمومی Solscan استفاده کنید (بدون نیاز به کلید برای درخواست‌های محدود)
+    """پیدا کردن خریداران اولیه در شبکه سولانا با Solscan API عمومی"""
+    print("ℹ️ جستجو در شبکه سولانا از طریق Solscan...")
+    
+    # استفاده از API عمومی Solscan (نیاز به کلید ندارد)
     url = f"https://public-api.solscan.io/account/tokens?account={contract_address}"
     
     try:
         response = requests.get(url, timeout=15)
         if response.status_code == 404:
-            print("ℹ️ قرارداد در Solscan پیدا نشد (ممکن است توکن جدید باشد).")
+            print("ℹ️ قرارداد در Solscan پیدا نشد.")
             return []
         
         data = response.json()
@@ -119,84 +151,42 @@ def get_first_buyers_solana(contract_address):
             print("ℹ️ اطلاعاتی برای این قرارداد در Solscan وجود ندارد.")
             return []
         
-        # اینجا باید خریداران اولیه را پیدا کنیم، اما Solscan API عمومی محدود است
-        # به جای آن، یک پیام توضیحی نمایش می‌دهیم
-        print("ℹ️ توکن در شبکه سولانا است. برای خریداران اولیه باید از ابزارهای تخصصی Solana استفاده کرد.")
+        # Solscan API عمومی اطلاعات محدودی دارد
+        # برای اطلاعات کامل‌تر نیاز به کلید API است
+        print("ℹ️ برای اطلاعات کامل خریداران اولیه در سولانا، نیاز به کلید API اختصاصی است.")
         return []
         
     except Exception as e:
         print(f"❌ خطا در Solscan: {e}")
         return []
 
-def get_first_buyers_bsc(contract_address):
-    """پیدا کردن خریداران اولیه در شبکه BSC با BSCscan API"""
-    # نیاز به کلید BSCscan دارید
-    BSCSCAN_API_KEY = os.getenv("BSCSCAN_API_KEY", "")
-    if not BSCSCAN_API_KEY:
-        print("ℹ️ کلید BSCscan تنظیم نشده است. لطفاً BSCSCAN_API_KEY را به Secrets اضافه کنید.")
-        return []
-    
-    url = f"https://api.bscscan.com/api?module=account&action=tokentx&contractaddress={contract_address}&sort=asc&apikey={BSCSCAN_API_KEY}"
-    
-    try:
-        response = requests.get(url, timeout=15)
-        data = response.json()
-        
-        if data.get("status") != "1":
-            print(f"⚠️ خطای BSCscan: {data.get('message', 'خطای ناشناخته')}")
-            return []
-        
-        transactions = data.get("result", [])
-        print(f"📊 تعداد کل تراکنش‌های قرارداد: {len(transactions)}")
-        
-        buyers = {}
-        for tx in transactions:
-            try:
-                from_addr = tx.get("from")
-                value = float(tx.get("value", 0)) / (10 ** 18)
-                if value > 0 and from_addr not in buyers:
-                    buyers[from_addr] = {
-                        "amount": value,
-                        "timestamp": tx.get("timeStamp"),
-                        "hash": tx.get("hash")
-                    }
-                    if len(buyers) >= 5:
-                        break
-            except (ValueError, TypeError):
-                continue
-        
-        result = [{"address": addr, **data} for addr, data in buyers.items()]
-        result.sort(key=lambda x: x["timestamp"])
-        print(f"✅ تعداد خریداران اولیه پیدا شده: {len(result)}")
-        return result
-        
-    except Exception as e:
-        print(f"❌ خطا در BSCscan: {e}")
-        return []
-
-def get_first_buyers(contract_address, chain_id):
-    """تشخیص شبکه و فراخوانی تابع مناسب برای پیدا کردن خریداران اولیه"""
+def get_first_buyers(contract_address, chain_name):
+    """تشخیص شبکه و دریافت خریداران اولیه"""
     if not contract_address or len(contract_address) < 10:
         print(f"⚠️ آدرس قرارداد نامعتبر: {contract_address}")
         return []
     
-    print(f"🔗 در حال بررسی قرارداد: {contract_address[:10]}...{contract_address[-6:]} در شبکه {chain_id}")
+    print(f"🔗 در حال بررسی قرارداد: {contract_address[:10]}...{contract_address[-6:]} در شبکه {chain_name}")
     
-    # تشخیص شبکه
-    chain = chain_id.lower()
+    chain = chain_name.lower()
     
-    if chain in ["ethereum", "eth", "arbitrum", "optimism", "polygon", "base", "linea", "zksync", "celo", "mantle", "scroll", "avalanche", "fantom"]:
-        return get_first_buyers_ethereum(contract_address)
+    # شبکه‌های EVM (پشتیبانی شده توسط Etherscan V2)
+    evm_chains = [
+        "ethereum", "eth", "bsc", "bnb", "arbitrum", "optimism", 
+        "polygon", "base", "linea", "zksync", "celo", "avalanche", "fantom"
+    ]
+    
+    if chain in evm_chains:
+        return get_first_buyers_evm(contract_address, chain)
     
     elif chain in ["solana", "sol"]:
         return get_first_buyers_solana(contract_address)
     
-    elif chain in ["bsc", "bnb"]:
-        return get_first_buyers_bsc(contract_address)
-    
     else:
-        print(f"ℹ️ شبکه {chain} پشتیبانی نمی‌شود. خریداران اولیه پیدا نشد.")
+        print(f"ℹ️ شبکه {chain} پشتیبانی نمی‌شود.")
         return []
+
+# ==================== تابع اصلی پیدا کردن ارزهای با رشد بالا ====================
 
 def get_gainer_tokens():
     """پیدا کردن ارزهای با رشد بالا با استفاده از API ترندینگ"""
@@ -295,6 +285,8 @@ def get_gainer_tokens():
     
     return all_gainers
 
+# ==================== ساخت پیام گزارش ====================
+
 def format_message(token, buyers=None):
     """ساخت پیام گزارش برای یک توکن"""
     message = f"""
@@ -321,6 +313,8 @@ def format_message(token, buyers=None):
         message += "\n⚠️ خریدار اولیه‌ای پیدا نشد (ممکن است توکن جدید باشد یا شبکه پشتیبانی نشود)."
     
     return message
+
+# ==================== تابع اصلی ====================
 
 def main():
     """تابع اصلی ربات"""
